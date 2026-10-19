@@ -22,7 +22,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .empty{padding:30px 18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px;line-height:1.5}
 .view{display:none}.view.active{display:block}.back{margin-bottom:14px}.songhead{margin:4px 0 12px}.songhead h1{font-size:27px;line-height:1.15;margin:8px 0}.artist{color:var(--muted);font-size:14px}
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);padding:10px;border:1px solid var(--line);border-radius:15px;margin:14px 0}.toolbar .label{font-size:12px;color:var(--muted);margin-right:2px}.keyvalue{font-weight:800;min-width:36px;text-align:center;color:var(--accent)}
-.reading{font-size:20px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;padding:8px 2px 25vh;min-height:40vh}.chord{color:var(--accent);font-weight:800}.sectionlabel{color:var(--green);font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+.reading{font-size:20px;line-height:2.25;white-space:pre-wrap;overflow-wrap:break-word;padding:8px 2px 25vh;min-height:40vh}.reading ruby{ruby-position:over;white-space:nowrap}.reading rt{color:var(--accent);font-weight:800;font-size:.68em;line-height:1.1;text-align:left}.chord{color:var(--accent);font-weight:800}.chord-alone{display:inline-block;font-size:.78em;line-height:1.4}.sectionlabel{color:var(--green);font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase}
 .auto-controls{display:flex;align-items:center;gap:9px;width:100%;font-size:12px;color:var(--muted)}input[type=range]{padding:0;accent-color:var(--accent);flex:1}
 .bottom-actions{display:flex;gap:8px;margin-top:14px}.bottom-actions button{flex:1}
 .form{display:grid;gap:12px}.form label{display:grid;gap:6px;font-size:13px;color:var(--muted)}.form textarea{min-height:220px;line-height:1.5;resize:vertical}.hint{font-size:12px;color:var(--muted);line-height:1.5}
@@ -119,10 +119,29 @@ function transposeChord(chord,steps){
 }
 function transposeText(text,steps){return text.replace(/\[([^\]]+)\]/g,(_,c)=>'['+transposeChord(c,steps)+']')}
 function formatLyrics(text,steps){
- let out=esc(transposeText(text,steps));
- out=out.replace(/\[([^\]]+)\]/g,'<span class="chord">$1</span>');
- out=out.replace(/(^|\n)(ESTROFA|ESTRIBILLO|INTRO|PUENTE|CORO|VERSO|FINAL)(?=\s|$)/gi,'$1<span class="sectionlabel">$2</span>');
- return out;
+ // Ancla cada acorde sobre la palabra/sílaba que lo sigue, sin mezclarlo con la letra.
+ const lines=transposeText(text,steps).split('\n');
+ return lines.map(line=>{
+  if(/^(ESTROFA|ESTRIBILLO|INTRO|PUENTE|CORO|VERSO|FINAL)(?:\s|$)/i.test(line))
+   return '<span class="sectionlabel">'+esc(line)+'</span>';
+  const re=/\[([^\]]+)\]/g;
+  let html='',cursor=0,match;
+  while((match=re.exec(line))!==null){
+   html+=esc(line.slice(cursor,match.index));
+   const after=line.slice(re.lastIndex);
+   // Conserva espacios y ubica el acorde encima del primer fragmento de texto.
+   const word=after.match(/^[^\s\[]+/);
+   if(word){
+    html+='<ruby><rb>'+esc(word[0])+'</rb><rt>'+esc(match[1])+'</rt></ruby>';
+    cursor=re.lastIndex+word[0].length;
+    re.lastIndex=cursor;
+   }else{
+    html+='<span class="chord chord-alone">'+esc(match[1])+'</span>';
+    cursor=re.lastIndex;
+   }
+  }
+  return html+esc(line.slice(cursor));
+ }).join('\n');
 }
 function activeSong(){return songs.find(s=>s.id===currentId)}
 function openSong(id){stopAuto();currentId=id;const s=activeSong();if(!s)return;
