@@ -30,6 +30,18 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 footer{color:var(--muted);font-size:11px;text-align:center;padding:24px 0}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#292e38;color:white;padding:11px 15px;border-radius:12px;z-index:40;display:none;max-width:90%;font-size:13px}
 @media(min-width:600px){main{padding-top:22px}.modal{align-items:center}.sheet{border-radius:22px;max-width:620px}.reading{font-size:22px}}
+
+.reading{font-size:var(--reading-size,20px)}
+.reading rt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.chord-alone{cursor:pointer}
+.chord-sheet{max-width:390px;text-align:center}
+#chordDiagram svg{max-width:260px;width:100%;height:auto}
+body.stage header,body.stage .back,body.stage .songhead,body.stage .bottom-actions{display:none}
+body.stage main{max-width:100%;padding-top:5px}
+body.stage .reading{max-width:980px;margin:auto}
+body.stage .toolbar{max-width:980px;margin:8px auto}
+body.stage #stageBtn{background:var(--accent);color:#111318}
+@media(min-width:600px){.reading{font-size:var(--reading-size,22px)}}
 </style>
 </head>
 <body>
@@ -42,7 +54,8 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:24px 0}
 <main>
  <section id="library" class="view active">
   <div class="searchrow"><input id="search" placeholder="Buscar canción o artista…" autocomplete="off"><button id="exportBtn" title="Exportar respaldo">↗</button></div>
-  <div class="filters" id="filters">
+  <div class="searchrow"><button id="importBtn">⬇ Importar respaldo</button><input type="file" id="importFile" accept=".json,application/json" hidden></div>
+   <div class="filters" id="filters">
    <button class="chip active" data-filter="Todas">Todas</button>
    <button class="chip" data-filter="Favoritas">★ Favoritas</button>
    <button class="chip" data-filter="Rock nacional">Rock nacional</button>
@@ -51,7 +64,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:24px 0}
    <button class="chip" data-filter="Otros">Otros</button>
   </div>
   <div id="songlist" class="songlist"><div class="songcard"><div class="songmain"><div class="songtitle">🎸 Oración del remanso</div><div class="songmeta">Jorge Fandermole · Folclore · Sol mayor</div></div></div><div class="empty">Si ves este mensaje, el visor no permite ejecutar la aplicación. Para usar el cancionero interactivo hay que abrirlo desde un sitio web en Safari.</div></div>
-  <footer>Versión inicial · Tus canciones se guardan en este dispositivo</footer>
+  <footer>Versión mejorada · Guardá respaldos para cambiar de dispositivo</footer>
  </section>
  <section id="songview" class="view">
   <button class="ghost back" id="backBtn">← Mi biblioteca</button>
@@ -84,6 +97,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:24px 0}
  </div>
 </div>
 <div id="toast" class="toast"></div>
+<div id="chordDialog" class="modal" role="dialog" aria-modal="true" aria-label="Diagrama del acorde"><div class="sheet chord-sheet"><div class="sheethead"><h2 id="chordName">Acorde</h2><button id="closeChord" class="ghost">✕</button></div><div id="chordDiagram"></div><p class="hint">Los diagramas muestran posiciones habituales. Algunos acordes tienen varias digitaciones.</p></div></div>
 <script>
 const NOTES=['Do','Do#','Re','Re#','Mi','Fa','Fa#','Sol','Sol#','La','La#','Si'];
 const ALIASES={'Dob':'Si','Reb':'Do#','Mib':'Re#','Fab':'Mi','Solb':'Fa#','Lab':'Sol#','Sib':'La#','Mib':'Re#'};
@@ -132,11 +146,11 @@ function formatLyrics(text,steps){
    // Conserva espacios y ubica el acorde encima del primer fragmento de texto.
    const word=after.match(/^[^\s\[]+/);
    if(word){
-    html+='<ruby><rb>'+esc(word[0])+'</rb><rt>'+esc(match[1])+'</rt></ruby>';
+    html+='<ruby><rb>'+esc(word[0])+'</rb><rt data-chord="'+esc(match[1])+'" title="Ver acorde">'+esc(match[1])+'</rt></ruby>';
     cursor=re.lastIndex+word[0].length;
     re.lastIndex=cursor;
    }else{
-    html+='<span class="chord chord-alone">'+esc(match[1])+'</span>';
+    html+='<span class="chord chord-alone" data-chord="'+esc(match[1])+'">'+esc(match[1])+'</span>';
     cursor=re.lastIndex;
    }
   }
@@ -169,6 +183,42 @@ $('deleteBtn').onclick=()=>{let s=activeSong();if(!s)return;if(confirm('¿Elimin
 $('songForm').onsubmit=e=>{e.preventDefault();let id=$('songId').value;let existing=songs.find(s=>s.id===id);let data={id:id||('song-'+Date.now()),title:$('titleInput').value.trim(),artist:$('artistInput').value.trim(),category:$('categoryInput').value,key:$('keyInput').value,lyrics:$('lyricsInput').value, favorite:existing?.favorite||false,transpose:existing?.transpose||0};if(existing)Object.assign(existing,data);else songs.unshift(data);save();closeEditor();renderList();if(currentId===data.id)openSong(data.id);toast('Canción guardada')};
 $('exportBtn').onclick=()=>{let blob=new Blob([JSON.stringify(songs,null,2)],{type:'application/json'});let url=URL.createObjectURL(blob);let a=document.createElement('a');a.href=url;a.download='mi-cancionero-respaldo.json';a.click();URL.revokeObjectURL(url);toast('Respaldo preparado')};
 $('editor').addEventListener('click',e=>{if(e.target===$('editor'))closeEditor()});
+// Tamaño de letra persistente.
+let fontSize=Math.max(14,Math.min(40,Number(localStorage.getItem('miCancioneroFont')||20)));
+function applyFont(){document.documentElement.style.setProperty('--reading-size',fontSize+'px');localStorage.setItem('miCancioneroFont',fontSize)}
+$('fontDown').onclick=()=>{fontSize=Math.max(14,fontSize-2);applyFont()};
+$('fontUp').onclick=()=>{fontSize=Math.min(40,fontSize+2);applyFont()};applyFont();
+$('stageBtn').onclick=()=>{document.body.classList.toggle('stage');$('stageBtn').textContent=document.body.classList.contains('stage')?'✕ Salir del escenario':'⛶ Modo escenario'};
+$('backBtn').addEventListener('click',()=>document.body.classList.remove('stage'));
+// Importación de respaldos exportados desde la biblioteca.
+$('importBtn').onclick=()=>$('importFile').click();
+$('importFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{
+ const data=JSON.parse(await f.text());if(!Array.isArray(data)||!data.every(s=>s&&typeof s.title==='string'&&typeof s.lyrics==='string'))throw Error('Formato inválido');
+ if(!confirm('¿Importar '+data.length+' canciones? Se combinarán con las actuales; las canciones con el mismo identificador serán reemplazadas.'))return;
+ const map=new Map(songs.map(s=>[s.id,s]));data.forEach((s,i)=>{const id=String(s.id||'import-'+Date.now()+'-'+i);map.set(id,{id,title:s.title,artist:String(s.artist||''),category:String(s.category||'Otros'),key:NOTES.includes(s.key)?s.key:'Do',lyrics:s.lyrics,favorite:!!s.favorite,transpose:Number(s.transpose)||0})});songs=[...map.values()];save();renderList();toast('Respaldo importado');
+ }catch(err){alert('No se pudo importar: '+err.message)}finally{e.target.value=''}};
+// Diagramas de acordes en afinación estándar (de 6ª a 1ª cuerda).
+const SHAPES={
+ 'Do':[-1,3,2,0,1,0],'Do7':[-1,3,2,3,1,0],'Dom':[-1,3,5,5,4,3],
+ 'Re':[-1,-1,0,2,3,2],'Rem':[-1,-1,0,2,3,1],'Re7':[-1,-1,0,2,1,2],
+ 'Mi':[0,2,2,1,0,0],'Mim':[0,2,2,0,0,0],'Mi7':[0,2,0,1,0,0],
+ 'Fa':[1,3,3,2,1,1],'Fam':[1,3,3,1,1,1],'Fa7':[1,3,1,2,1,1],
+ 'Sol':[3,2,0,0,0,3],'Sol7':[3,2,0,0,0,1],'Solm':[3,5,5,3,3,3],
+ 'La':[-1,0,2,2,2,0],'Lam':[-1,0,2,2,1,0],'La7':[-1,0,2,0,2,0],'Lam7':[-1,0,2,0,1,0],
+ 'Si':[-1,2,4,4,4,2],'Sim':[-1,2,4,4,3,2],'Si7':[-1,2,1,2,0,2],
+ 'Fa#m':[2,4,4,2,2,2],'Do#m':[-1,4,6,6,5,4], 'Re/Fa#':[2,-1,0,2,3,2],
+ 'Mi/Sol#':[4,2,2,1,0,0], 'Re7':[ -1,-1,0,2,1,2]
+};
+function diagramSvg(frets){const vals=frets.filter(x=>x>0),base=Math.max(1,Math.min(...vals)-1),start=base>1?base:1;
+ let out='<svg viewBox="0 0 260 285" role="img" aria-label="Diagrama de guitarra"><g stroke="currentColor" stroke-width="2">';
+ for(let i=0;i<6;i++)out+='<line x1="'+(35+i*38)+'" y1="45" x2="'+(35+i*38)+'" y2="245"/>';
+ for(let i=0;i<6;i++)out+='<line x1="35" y1="'+(45+i*40)+'" x2="225" y2="'+(45+i*40)+'"/>';
+ out+='</g>';if(start>1)out+='<text x="8" y="75" fill="currentColor" font-size="16">'+start+'fr</text>';
+ frets.forEach((f,i)=>{let x=35+i*38;if(f<0)out+='<text x="'+x+'" y="30" text-anchor="middle" fill="currentColor" font-size="20">×</text>';else if(f===0)out+='<circle cx="'+x+'" cy="24" r="8" fill="none" stroke="currentColor" stroke-width="2"/>';else out+='<circle cx="'+x+'" cy="'+(45+(f-start+.5)*40)+'" r="12" fill="#e8bd65"/>'});return out+'</svg>'}
+function openChord(chord){$('chordName').textContent=chord;const shape=SHAPES[chord];$('chordDiagram').innerHTML=shape?diagramSvg(shape):'<p>Este acorde todavía no tiene un diagrama cargado. Podés seguir viendo su nombre y transportándolo.</p>';$('chordDialog').classList.add('open')}
+$('lyrics').addEventListener('click',e=>{let el=e.target.closest('[data-chord]');if(el)openChord(el.dataset.chord)});
+$('closeChord').onclick=()=>$('chordDialog').classList.remove('open');
+$('chordDialog').onclick=e=>{if(e.target===$('chordDialog'))$('chordDialog').classList.remove('open')};
 load();
 </script>
 </body>
